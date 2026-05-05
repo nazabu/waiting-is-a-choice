@@ -51,8 +51,13 @@ Fill in collaborators and hardware donors.
 
 \begin{figure}[t]
     \centering
-    % \includegraphics[width=\linewidth]{../docs/figures/overlap_placeholder.png}
-    \caption{(Placeholder) Nsight Systems capture showing prefetch + compute concurrency.}
+    \IfFileExists{../docs/figures/overlap_nvtx_minimal.png}{%
+        \includegraphics[width=\linewidth]{../docs/figures/overlap_nvtx_minimal.png}%
+    }{%
+        \framebox{\parbox[c][0.22\textwidth][c]{0.92\linewidth}{\centering
+        \textit{Export \texttt{overlap\_nvtx\_minimal.png} via Nsight Systems from \texttt{capture\_nsys.sh} (see docs/figures/README.md).}}}%
+    }
+    \caption{Nsight Systems trace (CUDA + NVTX): \texttt{wic\_cuda\_bench} emits \texttt{WIC:*} ranges. Contrast \texttt{two\_kernels\_host\_sync} (gaps) with \texttt{fused\_pipeline\_mixed\_float} (single continuous wave).}
 \end{figure}
 
 \end{document}
