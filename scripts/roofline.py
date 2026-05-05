@@ -24,7 +24,7 @@ def read_mean_us(csv_path: str, row_name: str) -> float | None:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--csv", default="results/microbench.csv")
-    parser.add_argument("--row", default="fp16_matmul_64")
+    parser.add_argument("--row", default="fp16_matmul_wmma_64")
     parser.add_argument("--mem-gbps", type=float, default=900.0)
     parser.add_argument("--peak-fp16-tflops", type=float, default=600.0)
     args = parser.parse_args()
@@ -47,7 +47,7 @@ def main() -> None:
 
     achieved = flops / mean_us / 1000.0  # GFLOP/s naive (µs timings)
     print(f"  Row `{args.row}` mean latency: {mean_us:.3f} µs")
-    print(f"  Naive GEMM-ish throughput: {achieved:.3f} GFLOP/s (model only)")
+    print(f"  GEMM throughput (model FLOPs / mean latency): {achieved:.3f} GFLOP/s")
     roof_gfps = args.peak_fp16_tflops * 1000.0  # TFLOPs/s → GFLOPs/s
     pct = min(100.0, 100.0 * achieved / roof_gfps) if roof_gfps else 0.0
     print(f"  Vs OOM FP16 tensor roof (~{roof_gfps:.0f} GFLOP/s from {args.peak_fp16_tflops} TFLOP/s): ~{pct:.2f}%")
