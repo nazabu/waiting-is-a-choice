@@ -37,6 +37,7 @@ using cuda::ptx::space_shared;
 
 constexpr unsigned kBarrierOff = 0u;
 constexpr unsigned kProdOff = 16u;
+constexpr unsigned kConsOff = 20u;  // uint32 consumer epoch (anti-lapping with producer)
 constexpr unsigned kTileBaseOff = 128u;
 
 __host__ __device__ __forceinline__ unsigned round_up_align(unsigned v, unsigned a) {
@@ -72,6 +73,7 @@ __launch_bounds__(128, 2)
 
     uint64_t* mbar = reinterpret_cast<uint64_t*>(smem_raw + kBarrierOff);
     volatile uint32_t* prod_local = reinterpret_cast<volatile uint32_t*>(smem_raw + kProdOff);
+    volatile uint32_t* cons_local = reinterpret_cast<volatile uint32_t*>(smem_raw + kConsOff);
     unsigned char* tile_base = smem_raw + kTileBaseOff;
 
     const unsigned xfer_bytes_u = static_cast<unsigned>(tile_elems) * sizeof(float);
@@ -80,6 +82,7 @@ __launch_bounds__(128, 2)
     if (br == 0u) {
         if (threadIdx.x == 0) {
             *prod_local = 0u;
+            *cons_local = 0u;
             mbarrier_init(mbar, 1u);
         }
         __syncthreads();
@@ -88,6 +91,13 @@ __launch_bounds__(128, 2)
 
     for (int t = 0; t < num_tiles; ++t) {
         if (br == 0u) {
+            if (threadIdx.x == 0 && t > 0) {
+                while (*cons_local < static_cast<uint32_t>(t)) {
+                    __threadfence_cluster();
+                    __nanosleep(128);
+                }
+            }
+            __syncthreads();
             if (threadIdx.x == 0) {
                 (void)mbarrier_arrive_expect_tx(sem_release, scope_cta, space_shared, mbar, xfer_bytes_u);
                 const int32_t coords[3] = {t * tile_elems, 0, 0};
@@ -117,6 +127,12 @@ __launch_bounds__(128, 2)
             }
             acc = block_reduce_sum(acc);
             if (threadIdx.x == 0) atomicAdd(g_out + t, acc);
+            if (threadIdx.x == 0) {
+                unsigned int* peer_cons =
+                    reinterpret_cast<unsigned int*>(cluster.map_shared_rank(smem_raw + kConsOff, 0));
+                atomicAdd(peer_cons, 1u);
+            }
+            __threadfence_cluster();
             __syncthreads();
         }
 
