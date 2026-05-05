@@ -9,6 +9,7 @@ set(CMAKE_CUDA_STANDARD_REQUIRED ON)
 include(cmake/WICCudaArch.cmake)
 
 find_package(OpenMP REQUIRED)
+find_package(CUDAToolkit REQUIRED)
 
 add_library(wic_cpu STATIC
   cpu/greedy_reference.cpp
