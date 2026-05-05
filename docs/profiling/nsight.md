@@ -42,4 +42,10 @@ ncu --set full -k regex:k_fused -o results/fused.ncu-rep ./build/wic_cuda_bench 
 ncu --set roofline --kernel-name-base demangled ./build/wic_cuda_bench --skip-correctness
 ```
 
-On Blackwell, add TMA/async copy sections once you wire hardware descriptors; update this doc with pinned commands.
+For **`k_cluster_tma_dsmem_kv`** (hardware TMA + cluster shared), use Nsight Compute sections that surface **TMA bulk** traffic and **barrier / mbarrier** behavior in addition to the usual L1TEX/L2 story. Helpful starting points (names vary by toolkit build):
+
+- **Memory workload / TMA**: metrics such as `l1tex__t_sectors_pipe_tma*` or toolkit-specific “Tensor Memory Accelerator” counters when present.
+- **Stalls**: `smsp__warp_issue_stalled_mbarrier` (or similarly named stall buckets) alongside `smsp__warp_issue_stalled_lg_throttle` / `..._long_scoreboard` for global dependence.
+- Capture: `ncu --set full -k regex:k_cluster_tma_dsmem -o results/cluster_tma.ncu-rep ./build/wic_cuda_bench --skip-correctness --iters 8`
+
+Refine the metric set after the first on-device capture; figures stay user-generated.
