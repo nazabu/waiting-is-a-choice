@@ -20,6 +20,8 @@ __global__ void k_verify_burst(const float* __restrict__ x, float* __restrict__ 
 }
 
 // Single-kernel heterogeneous-style: lower half warps "draft", upper half "verify" on shared handshake.
+// Occupancy targets: tune (maxThreads,minBlocksPerSM) with ncu + docs/profiling/occupancy.md — raise minBlocks
+// only when register count allows sustained multi-block waves on your SKU.
 __launch_bounds__(256, 2) __global__ void k_fused_pipeline(const float* __restrict__ gx, float* __restrict__ gy,
                                                            int n, int iters) {
     __shared__ float sm[2048];
