@@ -58,12 +58,6 @@ void bench_samples(int warmup, int measure, F&& f, std::vector<double>* out_us) 
     }
 }
 
-std::string git_sha() {
-    const char* g = std::getenv("GIT_COMMIT");
-    if (g && g[0]) return g;
-    return "unknown";
-}
-
 enum class BenchScope { Full, Core, Minimal };
 
 BenchScope parse_bench_scope(const std::string& s) {
@@ -401,14 +395,13 @@ int main(int argc, char** argv) {
         std::ofstream out(csv_path);
         wic::write_csv_header(out);
         const std::string gpu = prop.name;
-        const std::string sha = git_sha();
         auto row = [&](const char* name, double m, double s, double gops) {
             wic::BenchResult r;
             r.name = name;
             r.mean_us = m;
             r.stddev_us = s;
             r.throughput_gops = gops;
-            wic::write_csv_row(out, r, gpu, cuda_ver, sha);
+            wic::write_csv_row(out, r, gpu, cuda_ver);
         };
         row("serial_two_phase_stream", us_serial_m, us_serial_s, 0.0);
         row("two_kernels_sync", us_two_sync_m, us_two_sync_s, 0.0);

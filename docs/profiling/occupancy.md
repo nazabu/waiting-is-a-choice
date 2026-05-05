@@ -13,13 +13,15 @@ Record **registers / thread** and **spills** for each hot `__global__`.
 
 ## Nsight Compute table (fill after capture)
 
-| Kernel | Block | `__launch_bounds__` | Reg/thread (ncu) | Theoretical max blocks/SM | Achieved active warps | Notes |
-|--------|-------|---------------------|------------------|---------------------------|------------------------|-------|
-| `k_fused_pipeline` | 256 | `(256, 2)` | | | | draft vs verify halves |
-| `k_kv_tile_pipeline` | 256 | `(256, 2)` | | | | prefetch + compute warps |
-| `k_cluster_tma_dsmem_kv` | 128 | `(128, 2)` | | | | cluster 2×1×1 |
-| `k_gemm_fp16_wmma_64_nn` | 512 | `(512, 2)` | | | | 16 WMMA tiles |
-| `k_gemm_bf16_wmma_64_nn` | 512 | `(512, 2)` | | | | BF16 WMMA |
+
+| Kernel                   | Block | `__launch_bounds__` | Reg/thread (ncu) | Theoretical max blocks/SM | Achieved active warps | Notes                    |
+| ------------------------ | ----- | ------------------- | ---------------- | ------------------------- | --------------------- | ------------------------ |
+| `k_fused_pipeline`       | 256   | `(256, 2)`          |                  |                           |                       | draft vs verify halves   |
+| `k_kv_tile_pipeline`     | 256   | `(256, 2)`          |                  |                           |                       | prefetch + compute warps |
+| `k_cluster_tma_dsmem_kv` | 128   | `(128, 2)`          |                  |                           |                       | cluster 2×1×1            |
+| `k_gemm_fp16_wmma_64_nn` | 512   | `(512, 2)`          |                  |                           |                       | 16 WMMA tiles            |
+| `k_gemm_bf16_wmma_64_nn` | 512   | `(512, 2)`          |                  |                           |                       | BF16 WMMA                |
+
 
 Example `ncu` query (adjust metrics to toolkit):
 
@@ -34,3 +36,4 @@ ncu --metrics sm__warps_active.avg.pct_of_peak_sustained_active,dram__throughput
 
 1. If one role forces high register pressure, shrink unroll factors in that branch or move the slow path to a second launch.
 2. Increase `minBlocksPerMultiprocessor` in `__launch_bounds__` only when register count allows **and** sustained wave count improves in `ncu`.
+

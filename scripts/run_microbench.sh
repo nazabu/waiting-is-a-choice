@@ -10,5 +10,4 @@ if [[ ! -x "$BIN" ]]; then
   exit 1
 fi
 
-export GIT_COMMIT="$(git -C "$ROOT" rev-parse HEAD 2>/dev/null || echo manual)"
 exec "$BIN" "${@}" --csv "$OUT"

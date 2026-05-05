@@ -1,16 +1,18 @@
 #pragma once
 
-// Nsight Systems ranges; no-op when built with WIC_HAS_NVTX=0 (missing libnvToolsExt).
-#if WIC_HAS_NVTX
-#include <nvtx3/nvToolsExt.h>
+// Nsight Systems ranges; prefer header-only NVTX3 when available.
+#if __has_include(<nvtx3/nvtx3.hpp>)
+#include <nvtx3/nvtx3.hpp>
 
 namespace wic {
 
 struct NvtxRange {
-    explicit NvtxRange(const char* name) { nvtxRangePushA(name); }
-    ~NvtxRange() { nvtxRangePop(); }
+    explicit NvtxRange(const char* name) : range_(name) {}
     NvtxRange(const NvtxRange&) = delete;
     NvtxRange& operator=(const NvtxRange&) = delete;
+
+private:
+    nvtx3::scoped_range range_;
 };
 
 }  // namespace wic

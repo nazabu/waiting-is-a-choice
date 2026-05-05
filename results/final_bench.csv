@@ -1,4 +1,4 @@
-name,mean_us,stddev_us,throughput_gops,gpu,cuda_runtime,git_sha
-"serial_two_phase_stream",8.27796666667,2.44991651488,0,"NVIDIA GeForce RTX 5070 Ti","13.0","d56d6a57285bd4305544d6f6f632dff9ac03dca5"
-"two_kernels_sync",24.4346,70.3736020666,0,"NVIDIA GeForce RTX 5070 Ti","13.0","d56d6a57285bd4305544d6f6f632dff9ac03dca5"
-"fused_pipeline",6.334,0.406453118983,0,"NVIDIA GeForce RTX 5070 Ti","13.0","d56d6a57285bd4305544d6f6f632dff9ac03dca5"
+name,mean_us,stddev_us,throughput_gops,gpu,cuda_runtime
+"serial_two_phase_stream",7.61193333333,1.97559497687,0,"NVIDIA GeForce RTX 5070 Ti","13.0"
+"two_kernels_sync",11.5822333333,2.29611345814,0,"NVIDIA GeForce RTX 5070 Ti","13.0"
+"fused_pipeline",6.90363333333,2.20715829914,0,"NVIDIA GeForce RTX 5070 Ti","13.0"

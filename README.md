@@ -46,7 +46,7 @@ Dockerfile           # CUDA 12.8+ reproducible toolchain
 ```bash
 scripts/build.sh
 ./build/wic_cpu_demo --bind --threads 4
-GIT_COMMIT="$(git rev-parse HEAD)" scripts/run_microbench.sh
+scripts/run_microbench.sh
 scripts/roofline.py --csv results/microbench.csv
 python3 scripts/roofline_measured.py --bench-csv results/microbench.csv --peak-tflops 80 --peak-mem-gbps 850
 ```
@@ -59,7 +59,7 @@ Additional `wic_cuda_bench` flags (publication workflow):
 | `--stochastic-verify-iters N` | Host-driven draft corruption (~20% Bernoulli vs reference); device flags mismatches; asserts 100% detection. |
 | `--skip-fused-correctness` | Skips fused-vs-two-kernel check only. |
 
-NVTX ranges (`WIC:*`) appear in Nsight Systems when `libnvToolsExt` is linked at configure time.
+NVTX ranges (`WIC:*`) appear in Nsight Systems when CUDA `nvtx3` headers are available at build time.
 
 Environment notes:
 
@@ -67,7 +67,6 @@ Environment notes:
 | --- | --- |
 | `OMP_PROC_BIND` / `OMP_PLACES` | Set implicitly via `./wic_cpu_demo --bind` (`spread`, `cores`) to mimic deterministic socket pinning analogous to warp residency. |
 | `WIC_CUDA_ARCH` | Passed through `cmake` (`scripts/build.sh` defaults to **120**). Override for non-Blackwell GPUs, e.g. `WIC_CUDA_ARCH=89`. |
-| `GIT_COMMIT` | Injected into CSV metadata by `scripts/run_microbench.sh`. |
 
 ---
 

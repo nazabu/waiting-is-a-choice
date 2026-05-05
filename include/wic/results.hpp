@@ -16,7 +16,7 @@ struct BenchResult {
 
 void write_csv_header(std::ostream& os);
 void write_csv_row(std::ostream& os, const BenchResult& r, const std::string& gpu_name,
-                   const std::string& cuda_version, const std::string& git_sha);
+                   const std::string& cuda_version);
 
 inline double us_since(std::chrono::steady_clock::time_point t0) {
     using namespace std::chrono;

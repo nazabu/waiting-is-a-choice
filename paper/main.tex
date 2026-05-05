@@ -1,55 +1,58 @@
-% ArXiv-ready skeleton for "Waiting is a Choice: Asynchronous Speculative Decoding via Heterogeneous Specialization"
 \documentclass[11pt]{article}
 \usepackage[margin=1in]{geometry}
+\usepackage[T1]{fontenc}
 \usepackage{hyperref}
 \usepackage{graphicx}
 \usepackage{amsmath}
 \usepackage{booktabs}
 
 \title{Waiting is a Choice: Asynchronous Speculative Decoding via Heterogeneous Specialization}
-\author{Anonymous Author(s)}
-\date{\today}
+\author{Waiting is a Choice Team}
+\date{arXiv preprint, \today}
 
 \begin{document}
 \maketitle
 
 \begin{abstract}
-Traditional speculative decoding often incurs unavoidable-looking latency from alternating draft and target executions separated by synchronization. We argue this delay is partly an orchestration artifact. We prototype a heterogeneous, warp-specialized execution model on NVIDIA Blackwell-class hardware that keeps draft messenger warps advancing while validator warps overlap verification and KV-style memory traffic inside a tightly coupled CUDA kernel. Claims are anchored to reproducible GPU microbenchmarks (not production LLM throughput) and juxtaposed honestly against CPU-orchestrated baselines analogous to prevalent frameworks such as HuggingFace \texttt{generate()} pipelines and staged GPU engines like vLLM.
+Speculative decoding implementations often alternate draft and verify phases with host-visible synchronization points. This can introduce idle gaps that are not fundamental to model math, but to orchestration. We present a reproducible microbenchmark study of a warp-specialized fused kernel that keeps draft and verify work resident on-device. On an RTX 5070 Ti, our final benchmark sweep shows lower latency for fused execution than host-synchronized two-kernel execution. We report this as kernel-level evidence, not an end-to-end LLM serving claim.
 \end{abstract}
 
-\section{Problem}
-Explain the synchronous draft$\rightarrow$verify$\rightarrow$resample rhythm in speculative decoding deployments and quantify the stalls introduced by sequential kernel launches and host barriers.
+\section{Introduction}
+Deployed speculative decoding systems often follow a draft$\rightarrow$verify rhythm where launch boundaries and host fences shape the visible timeline. We study whether those barriers can be reduced by moving the handoff into one kernel with explicit warp-role partitioning.
 
 \section{Method}
-\subsection{Warp partitioning}
-Discuss SM resource budgets: warps reserved for messenger (draft/low precision) lanes vs validator/target lanes; shared-memory lanes emulating DSMEM handshakes within a cooperative cluster (\texttt{k\_cluster\_messenger\_validator}).
+\subsection{Warp specialization}
+The fused path (\texttt{k\_fused\_pipeline}) partitions warps into messenger-style draft work and validator-style verify work using shared-memory handoff inside one launch.
 
-\subsection{Memory prefetch}
-Describe the KV-tile prefetch warps and how they mirror TMA-style bulk movement on production Blackwell stacks.
+\subsection{Cluster and memory path}
+The repository includes KV tile prefetch and cluster TMA/DSMEM paths to study overlap and backpressure behavior in a controlled setting.
 
-\subsection{CPU analogue}
-Reference the OpenMP producer/consumer ring with greedy verification for reproducible correctness before GPU bring-up.
+\subsection{Instrumentation}
+Nsight Systems captures use NVTX ranges (\texttt{WIC:*}) to delineate serial two-phase, host-synchronized two-kernel, and fused execution regions.
 
 \section{Evaluation}
 \begin{itemize}
-  \item Hardware: NVIDIA RTX 5070 Ti (\texttt{sm\_120}); CUDA 12.x/13+ as noted in Dockerfile.
+  \item Hardware: NVIDIA RTX 5070 Ti (\texttt{sm\_120}); CUDA 13.0 runtime.
   \item Microbenchmark CSV outputs under \texttt{results/final\_bench.csv} (command: \texttt{OUT=results/final\_bench.csv scripts/run\_microbench.sh --bench-scope minimal --skip-fused-correctness --iters 30 --warmup 5}).
   \item Nsight timelines per \texttt{docs/profiling/nsight.md}.
-  \item Roofline methodology per \texttt{scripts/roofline.py} (replace peaks with measurements).
+  \item Occupancy/register worksheet under \texttt{docs/profiling/occupancy.md}.
 \end{itemize}
 
-From \texttt{results/final\_bench.csv}, the fused pipeline measures 6.334 \(\mu s\) mean latency vs 24.435 \(\mu s\) for the host-synchronized two-kernel baseline, i.e. \(3.86\times\) lower latency for the fused path. Against the serial two-phase stream baseline (8.278 \(\mu s\)), fused remains \(1.31\times\) faster.
+From \texttt{results/final\_bench.csv}, mean latencies are:
+\begin{itemize}
+  \item Serial two-phase stream: 7.612 \(\mu s\)
+  \item Two-kernel host sync: 11.582 \(\mu s\)
+  \item Fused single-kernel: 6.904 \(\mu s\)
+\end{itemize}
+This corresponds to \(1.68\times\) lower latency for fused vs host-synchronized two-kernel, and \(1.10\times\) lower latency for fused vs serial two-phase stream.
 
-\textbf{Disclaimer: } End-to-end speedups versus HuggingFace or vLLM are \emph{not} claimed here unless separately instrumented—the microbench intentionally isolates kernel scheduling effects.
+\textbf{Scope note:} These are kernel-level microbenchmark results. End-to-end throughput/latency claims against HuggingFace or vLLM require a separate integrated serving harness.
 
-\section{Limitations \& Future Work}
-Discuss cascaded speculation: multiple drafting models cooperating through extended DSMEM epochs, additional prefetch engines, and register pressure trade-offs.
+\section{Limitations and Future Work}
+Current results do not include model-quality metrics, tokenizer overhead, or networked serving effects. Future work includes multi-draft cascades, richer rollback state machines, and full-system integration.
 
-\section*{Acknowledgments}
-Fill in collaborators and hardware donors.
-
-% \bibliographystyle{plain}
-% \bibliography{refs} % populate refs.bib externally
+\section*{Reproducibility}
+All scripts, benchmark commands, and figure paths referenced above are in the repository under \texttt{scripts/}, \texttt{docs/}, and \texttt{results/}.
 
 \begin{figure}[t]
     \centering
@@ -59,7 +62,7 @@ Fill in collaborators and hardware donors.
         \framebox{\parbox[c][0.22\textwidth][c]{0.92\linewidth}{\centering
         \textit{Export \texttt{overlap\_nvtx\_minimal.png} via Nsight Systems from \texttt{capture\_nsys.sh} (see docs/figures/README.md).}}}%
     }
-    \caption{Nsight Systems minimal-scope trace from \texttt{scripts/capture\_nsys.sh -- --bench-scope minimal --skip-correctness --iters 20 --warmup 3}. Contrast host-synchronized two-kernel execution (visible launch/sync gaps) with fused single-kernel execution (continuous kernel wave). Corresponding benchmark means in \texttt{results/final\_bench.csv}: 24.435 \(\mu s\) (two-kernel) vs 6.334 \(\mu s\) (fused), i.e. \(3.86\times\) speedup.}
+    \caption{Nsight Systems NVTX-range timeline from \texttt{scripts/capture\_nsys.sh -- --bench-scope minimal --skip-correctness --iters 20 --warmup 3}. The host-synchronized two-kernel region is visibly longer than the fused region. Final benchmark means in \texttt{results/final\_bench.csv}: 11.582 \(\mu s\) (two-kernel) vs 6.904 \(\mu s\) (fused), i.e. \(1.68\times\) speedup.}
 \end{figure}
 
 \end{document}
