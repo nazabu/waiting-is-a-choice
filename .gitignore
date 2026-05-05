@@ -1,0 +1,42 @@
+# Build
+build/
+cmake-build-*/
+CMakeCache.txt
+CMakeFiles/
+compile_commands.json
+
+# CUDA / NVCC
+*.i
+*.ii
+*.gpu
+*.ptx
+*.cubin
+*.fatbin
+*.o
+*.nvvp
+*.nsys-rep
+
+# Python
+__pycache__/
+.venv/
+*.pyc
+
+# LaTeX
+paper/build/
+*.aux
+*.log
+*.out
+*.pdf
+*.synctex.gz
+
+# Results (keep small JSON/CSV; ignore huge traces)
+results/*.nsys-rep
+results/*.ncu-rep
+*.qdrep
+
+# IDE
+.idea/
+.vscode/
+
+# OS
+.DS_Store
