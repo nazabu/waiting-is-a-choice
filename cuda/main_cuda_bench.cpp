@@ -69,6 +69,7 @@ int main(int argc, char** argv) {
     wic::BenchConfig cfg;
     const char* csv_path = nullptr;
     bool skip_correctness = false;
+    bool skip_fused_correctness = false;
     for (int i = 1; i < argc; ++i) {
         std::string a = argv[i];
         if (a == "--warmup" && i + 1 < argc) cfg.warmup_iters = std::atoi(argv[++i]);
@@ -76,6 +77,7 @@ int main(int argc, char** argv) {
         if (a == "--n" && i + 1 < argc) cfg.dim = static_cast<std::size_t>(std::atoll(argv[++i]));
         if (a == "--csv" && i + 1 < argc) csv_path = argv[++i];
         if (a == "--skip-correctness") skip_correctness = true;
+        if (a == "--skip-fused-correctness") skip_fused_correctness = true;
     }
 
     check_cuda(cudaSetDevice(0), "cudaSetDevice");
@@ -97,7 +99,7 @@ int main(int argc, char** argv) {
     for (int i = 0; i < n; ++i) h[static_cast<std::size_t>(i)] = std::sin(0.01f * static_cast<float>(i));
     check_cuda(cudaMemcpy(d_x, h.data(), bytes, cudaMemcpyHostToDevice), "cudaMemcpy");
 
-    if (!skip_correctness) {
+    if (!skip_correctness && !skip_fused_correctness) {
         const float err = wic::max_abs_diff_fused_vs_two_kernel(d_x, d_tmp, d_y, n);
         std::cout << "correctness max|fused - two_kernel| (1 fused iter): " << err << '\n';
         if (!(err < 5e-2f)) {
@@ -143,6 +145,28 @@ int main(int argc, char** argv) {
     check_cuda(cudaMemcpy(d_kv, hkv.data(), kv_elems * sizeof(float), cudaMemcpyHostToDevice),
                "cudaMemcpy d_kv");
 
+    cudaError_t cluster_tma_st = cudaErrorNotSupported;
+    if (prop.major >= 9 && (tile * sizeof(float)) % 16u == 0u) {
+        cluster_tma_st = wic::launch_cluster_tma_dsmem_kv_demo(d_kv, d_tile_out, tile,
+                                                               static_cast<int>(tiles), prop);
+        check_cuda(cudaDeviceSynchronize(), "cluster_tma_dsmem probe sync");
+        if (cluster_tma_st == cudaSuccess && !skip_correctness) {
+            float kv_err = 0.f;
+            check_cuda(wic::compare_cluster_tma_kv_to_cpu_ref(d_kv, d_tile_out, static_cast<int>(tile),
+                                                              static_cast<int>(tiles), &kv_err),
+                       "compare_cluster_tma_kv_to_cpu_ref");
+            std::cout << "correctness cluster_tma_dsmem vs CPU ref (KV tiles): max abs " << kv_err << '\n';
+            if (!(kv_err < 5e-2f)) {
+                std::cerr << "cluster_tma_dsmem correctness failed (max abs " << kv_err << ").\n";
+                return 5;
+            }
+        } else if (cluster_tma_st != cudaSuccess && cluster_tma_st != cudaErrorNotSupported) {
+            std::cerr << "launch_cluster_tma_dsmem_kv_demo: " << cudaGetErrorString(cluster_tma_st) << '\n';
+            return 5;
+        }
+        check_cuda(cudaMemset(d_tile_out, 0, tiles * sizeof(float)), "cudaMemset d_tile_out reset");
+    }
+
     bench_samples(cfg.warmup_iters, cfg.measure_iters, [&]() {
         const cudaError_t st = wic::launch_tma_style_prefetch_demo(d_kv, d_tile_out, kv_elems, tile, 1, prop);
         if (st != cudaSuccess) {
@@ -153,6 +177,19 @@ int main(int argc, char** argv) {
     }, &samples);
     const double us_kv_m = mean(samples);
     const double us_kv_s = stddev_sample(samples);
+
+    double us_cluster_tma_m = 0.0;
+    double us_cluster_tma_s = 0.0;
+    if (cluster_tma_st == cudaSuccess) {
+        bench_samples(cfg.warmup_iters, cfg.measure_iters, [&]() {
+            check_cuda(wic::launch_cluster_tma_dsmem_kv_demo(d_kv, d_tile_out, tile,
+                                                             static_cast<int>(tiles), prop),
+                       "launch_cluster_tma_dsmem_kv_demo bench launch");
+            check_cuda(cudaDeviceSynchronize(), "cudaDeviceSynchronize cluster_tma_dsmem");
+        }, &samples);
+        us_cluster_tma_m = mean(samples);
+        us_cluster_tma_s = stddev_sample(samples);
+    }
 
     cudaFree(d_kv);
     cudaFree(d_tile_out);
@@ -233,6 +270,12 @@ int main(int argc, char** argv) {
               << us_fused_s << " us (stddev)\n";
     std::cout << "kv_tile_pipeline:              " << us_kv_m << " us (mean), " << us_kv_s
               << " us (stddev)\n";
+    if (cluster_tma_st == cudaSuccess) {
+        std::cout << "cluster_tma_dsmem_kv:           " << us_cluster_tma_m << " us (mean), " << us_cluster_tma_s
+                  << " us (stddev)\n";
+    } else if (cluster_tma_st == cudaErrorNotSupported) {
+        std::cout << "cluster_tma_dsmem_kv:           skipped (SM < 9 or tensor encode / stride gating)\n";
+    }
     std::cout << "fp16_matmul " << M << 'x' << N << 'x' << K << ": " << us_fp16_m << " us (mean), "
               << us_fp16_s << " us (stddev)\n";
     std::cout << "fp8_e4m3_lut matvec " << V << 'x' << Hh << ": " << us_fp8_m << " us (mean), " << us_fp8_s
@@ -266,6 +309,9 @@ int main(int argc, char** argv) {
         row("two_kernels_sync", us_two_sync_m, us_two_sync_s, 0.0);
         row("fused_pipeline", us_fused_m, us_fused_s, 0.0);
         row("kv_tile_pipeline", us_kv_m, us_kv_s, 0.0);
+        if (cluster_tma_st == cudaSuccess) {
+            row("cluster_tma_dsmem_kv", us_cluster_tma_m, us_cluster_tma_s, 0.0);
+        }
         row("fp16_matmul_64", us_fp16_m, us_fp16_s,
             (2.0 * M * N * K) / (us_fp16_m * 1e-3));  // naive FLOP model
         row("fp8_matvec_lut", us_fp8_m, us_fp8_s,
