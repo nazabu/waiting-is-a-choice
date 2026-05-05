@@ -26,6 +26,7 @@ enable_language(CUDA)
 
 add_library(wic_cuda_kernels STATIC
   cuda/baselines.cu
+  cuda/cluster_tma_dsmem.cu
   cuda/dsmem_pipeline.cu
   cuda/tma_prefetch.cu
   cuda/precision_paths.cu
@@ -33,6 +34,7 @@ add_library(wic_cuda_kernels STATIC
 target_include_directories(wic_cuda_kernels PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 set_property(TARGET wic_cuda_kernels PROPERTY CUDA_SEPARABLE_COMPILATION ON)
 set_property(TARGET wic_cuda_kernels PROPERTY POSITION_INDEPENDENT_CODE ON)
+target_link_libraries(wic_cuda_kernels PUBLIC CUDA::cuda_driver)
 target_compile_options(wic_cuda_kernels PRIVATE
   $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr --expt-extended-lambda -lineinfo>)
 
