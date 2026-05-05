@@ -5,6 +5,7 @@
 \usepackage{graphicx}
 \usepackage{amsmath}
 \usepackage{booktabs}
+\usepackage{enumitem}
 
 \title{Waiting is a Choice: Asynchronous Speculative Decoding via Heterogeneous Specialization}
 \author{Waiting is a Choice Team}
@@ -14,45 +15,93 @@
 \maketitle
 
 \begin{abstract}
-Speculative decoding implementations often alternate draft and verify phases with host-visible synchronization points. This can introduce idle gaps that are not fundamental to model math, but to orchestration. We present a reproducible microbenchmark study of a warp-specialized fused kernel that keeps draft and verify work resident on-device. On an RTX 5070 Ti, our final benchmark sweep shows lower latency for fused execution than host-synchronized two-kernel execution. We report this as kernel-level evidence, not an end-to-end LLM serving claim.
+Speculative decoding often alternates draft and verify phases with host-visible synchronization. In production stacks this design can create idle windows that are orchestration artifacts rather than hard algorithmic limits. We present a reproducible microbenchmark study of a fused, warp-specialized GPU execution model that keeps draft and verify work resident in a single kernel. Our implementation includes serial and host-synchronized baselines, cluster-memory variants, and profiler instrumentation intended for paper-grade inspection. On an RTX 5070 Ti, the fused path reduces latency relative to host-synchronized two-kernel execution in our final benchmark sweep. We report these outcomes as kernel-level scheduling evidence, not end-to-end serving claims.
 \end{abstract}
 
 \section{Introduction}
-Deployed speculative decoding systems often follow a draft$\rightarrow$verify rhythm where launch boundaries and host fences shape the visible timeline. We study whether those barriers can be reduced by moving the handoff into one kernel with explicit warp-role partitioning.
+Modern speculative decoding systems are usually described algorithmically, but practical performance is dominated by runtime orchestration details: launch granularity, stream synchronization, and memory handoff costs between draft and verify stages. Even when draft and verify computations are lightweight in isolation, repeated host round-trips can inflate latency.
+
+This work isolates that orchestration axis. Instead of optimizing a full model server, we implement a controlled CUDA microbenchmark environment that compares three execution styles: serial two-phase streaming, host-synchronized two-kernel execution, and a fused single-kernel pipeline with explicit warp-role partitioning. The guiding hypothesis is simple: if draft and verify can be overlapped inside one launch with predictable memory handoff, ``waiting'' is partly optional.
+
+Our contribution is therefore methodological as much as numerical: we provide a transparent benchmark harness, profiler-aligned instrumentation, and code paths that map directly to claims in the manuscript. This framing mirrors the logical progression used by architecture papers: define a bottleneck, design a mechanism, and validate behavior under reproducible measurement.
+
+\section{Background and Motivation}
+Speculative decoding introduces two logically distinct roles:
+\begin{enumerate}[leftmargin=1.5em]
+  \item \textbf{Draft role:} generate candidate states quickly, usually at lower precision or reduced compute cost.
+  \item \textbf{Verify role:} validate, accept, or reject draft outputs against a stronger target computation.
+\end{enumerate}
+In many implementations these roles execute as separate launches with explicit synchronization points. That split is convenient for software modularity, but it also creates fixed orchestration overheads and can underutilize SM residency when kernels are short.
+
+The question is not whether draft and verify are mathematically separable; they are. The question is whether the runtime schedule must expose that separation as host-visible fences on every step. Our design explores the opposite choice: preserve the logical separation while co-scheduling the roles at warp granularity within one kernel.
+
+\begin{figure}[t]
+    \centering
+    \IfFileExists{../docs/figures/architecture_overview.png}{%
+        \includegraphics[width=\linewidth]{../docs/figures/architecture_overview.png}%
+    }{%
+        \framebox{\parbox[c][0.20\textwidth][c]{0.92\linewidth}{\centering
+        \textit{Add \texttt{docs/figures/architecture\_overview.png}: draft/verify warp-role architecture with shared-memory handoff and cluster backpressure path.}}}%
+    }
+    \caption{Architecture overview. This figure should summarize role partitioning, shared-memory handoff, and optional cluster/TMA path. Place this in early sections to anchor terminology before performance results.}
+\end{figure}
 
 \section{Method}
-\subsection{Warp specialization}
-The fused path (\texttt{k\_fused\_pipeline}) partitions warps into messenger-style draft work and validator-style verify work using shared-memory handoff inside one launch.
+\subsection{Execution model}
+The fused path (\texttt{k\_fused\_pipeline}) partitions warps into messenger-style draft work and validator-style verify work. Shared memory provides the immediate handoff lane, while thread-block synchronization ensures deterministic ordering. This design replaces repeated launch boundaries with intra-kernel role boundaries.
 
-\subsection{Cluster and memory path}
-The repository includes KV tile prefetch and cluster TMA/DSMEM paths to study overlap and backpressure behavior in a controlled setting.
+\subsection{Cluster and memory variants}
+Beyond the core fused path, the repository includes:
+\begin{itemize}[leftmargin=1.5em]
+  \item a KV tile prefetch pipeline for overlapping memory movement and compute;
+  \item a cluster TMA/DSMEM path with producer/consumer sequence control to avoid tile lapping;
+  \item precision paths (FP16/BF16 WMMA and guarded FP8/FP4 paths) for throughput-oriented experiments.
+\end{itemize}
+These variants are included to evaluate whether synchronization and dataflow ideas remain coherent under richer memory behavior.
 
 \subsection{Instrumentation}
-Nsight Systems captures use NVTX ranges (\texttt{WIC:*}) to delineate serial two-phase, host-synchronized two-kernel, and fused execution regions.
+All benchmarked regions are wrapped with NVTX ranges (\texttt{WIC:*}), enabling timeline-level inspection in Nsight Systems. This permits direct visual comparison between host-synchronized and fused execution windows and supports reproducible figure generation.
 
-\section{Evaluation}
-\begin{itemize}
-  \item Hardware: NVIDIA RTX 5070 Ti (\texttt{sm\_120}); CUDA 13.0 runtime.
-  \item Microbenchmark CSV outputs under \texttt{results/final\_bench.csv} (command: \texttt{OUT=results/final\_bench.csv scripts/run\_microbench.sh --bench-scope minimal --skip-fused-correctness --iters 30 --warmup 5}).
-  \item Nsight timelines per \texttt{docs/profiling/nsight.md}.
-  \item Occupancy/register worksheet under \texttt{docs/profiling/occupancy.md}.
-\end{itemize}
+\section{Experimental Protocol}
+\subsection{Hardware and software}
+Experiments are run on an NVIDIA RTX 5070 Ti (\texttt{sm\_120}) using CUDA 13.0 runtime in the benchmark binary. Build and run scripts are versioned in the repository to keep command lines stable.
 
+\subsection{Benchmark configuration}
+The final benchmark artifact is generated via:
+\begin{quote}
+\texttt{OUT=results/final\_bench.csv scripts/run\_microbench.sh --bench-scope minimal --skip-fused-correctness --iters 30 --warmup 5}
+\end{quote}
+We use \texttt{minimal} scope to focus the headline comparison on serial, two-kernel host-sync, and fused paths. The separate \texttt{core} and \texttt{full} scopes remain available for KV/cluster and mixed-precision investigations.
+
+\begin{figure}[t]
+    \centering
+    \IfFileExists{../docs/figures/benchmark_protocol.png}{%
+        \includegraphics[width=0.90\linewidth]{../docs/figures/benchmark_protocol.png}%
+    }{%
+        \framebox{\parbox[c][0.18\textwidth][c]{0.86\linewidth}{\centering
+        \textit{Add \texttt{docs/figures/benchmark\_protocol.png}: benchmark flow from build to CSV export, Nsight capture, and metric extraction.}}}%
+    }
+    \caption{Benchmark protocol overview. Recommended content: warmup/measure loops, benchmark modes, and where CSV and Nsight artifacts are produced.}
+\end{figure}
+
+\subsection{Metrics}
+Primary metric is mean kernel latency (microseconds), with sample standard deviation across measured iterations. For this paper version, occupancy counters from Nsight Compute are conditionally available; register-per-thread values are documented in the profiling worksheet and should be interpreted alongside counter-permission status.
+
+\section{Results}
+\subsection{Headline latency comparison}
 From \texttt{results/final\_bench.csv}, mean latencies are:
-\begin{itemize}
+\begin{itemize}[leftmargin=1.5em]
   \item Serial two-phase stream: 7.612 \(\mu s\)
   \item Two-kernel host sync: 11.582 \(\mu s\)
   \item Fused single-kernel: 6.904 \(\mu s\)
 \end{itemize}
-This corresponds to \(1.68\times\) lower latency for fused vs host-synchronized two-kernel, and \(1.10\times\) lower latency for fused vs serial two-phase stream.
+This yields \(1.68\times\) lower latency for fused vs host-synchronized two-kernel execution, and \(1.10\times\) lower latency for fused vs serial two-phase stream. The larger gain against host-sync baseline supports the claim that orchestration barriers materially contribute to runtime overhead.
 
-\textbf{Scope note:} These are kernel-level microbenchmark results. End-to-end throughput/latency claims against HuggingFace or vLLM require a separate integrated serving harness.
+\subsection{Timeline evidence}
+NVTX-range timelines show the two-kernel host-sync region occupying a visibly larger wall-clock slice than the fused region under the same minimal benchmark scenario. This complements scalar latency metrics by exposing schedule shape, not only aggregate duration.
 
-\section{Limitations and Future Work}
-Current results do not include model-quality metrics, tokenizer overhead, or networked serving effects. Future work includes multi-draft cascades, richer rollback state machines, and full-system integration.
-
-\section*{Reproducibility}
-All scripts, benchmark commands, and figure paths referenced above are in the repository under \texttt{scripts/}, \texttt{docs/}, and \texttt{results/}.
+\subsection{Resource observations}
+Measured register footprints in the occupancy worksheet indicate nontrivial pressure in fused and WMMA kernels. This is expected in heterogeneous kernels that co-locate roles. The key practical implication is that fusion gains are bounded by register residency and spill behavior; launch geometry and unrolling must be tuned with profiler feedback.
 
 \begin{figure}[t]
     \centering
@@ -62,7 +111,44 @@ All scripts, benchmark commands, and figure paths referenced above are in the re
         \framebox{\parbox[c][0.22\textwidth][c]{0.92\linewidth}{\centering
         \textit{Export \texttt{overlap\_nvtx\_minimal.png} via Nsight Systems from \texttt{capture\_nsys.sh} (see docs/figures/README.md).}}}%
     }
-    \caption{Nsight Systems NVTX-range timeline from \texttt{scripts/capture\_nsys.sh -- --bench-scope minimal --skip-correctness --iters 20 --warmup 3}. The host-synchronized two-kernel region is visibly longer than the fused region. Final benchmark means in \texttt{results/final\_bench.csv}: 11.582 \(\mu s\) (two-kernel) vs 6.904 \(\mu s\) (fused), i.e. \(1.68\times\) speedup.}
+    \caption{Two-panel figure for minimal benchmark scope. \textbf{Panel A (Nsight Systems Timeline of Execution Modes):} NVTX ranges from \texttt{scripts/capture\_nsys.sh -- --bench-scope minimal --skip-correctness --iters 20 --warmup 3}, showing host-synchronized two-kernel region longer than fused region. \textbf{Panel B (Latency Comparison Across Execution Modes):} means and standard deviations from \texttt{results/final\_bench.csv}: 11.582 \(\mu s\) (two-kernel) vs 6.904 \(\mu s\) (fused), corresponding to \(1.68\times\) speedup.}
 \end{figure}
+
+\section{Discussion}
+These results support a targeted conclusion: for this controlled kernel workload, reducing host-visible synchronization and fusing role handoff inside one launch lowers latency. They do not imply universal superiority of fusion in full serving pipelines. System-level factors such as tokenizer latency, scheduler policy, memory paging, and network transport can dominate in production.
+
+However, the methodology is transferable. The combination of explicit baselines, range-level instrumentation, and artifact-backed claims provides a robust template for evaluating orchestration ideas before full-stack integration.
+
+\begin{figure}[t]
+    \centering
+    \IfFileExists{../docs/figures/occupancy_registers.png}{%
+        \includegraphics[width=0.95\linewidth]{../docs/figures/occupancy_registers.png}%
+    }{%
+        \framebox{\parbox[c][0.18\textwidth][c]{0.90\linewidth}{\centering
+        \textit{Add \texttt{docs/figures/occupancy\_registers.png}: occupancy/register summary from Nsight Compute once GPU counter permissions are enabled.}}}%
+    }
+    \caption{Resource analysis figure placeholder. Populate with occupancy and register-pressure trends to support launch-bound and fusion trade-off discussion.}
+\end{figure}
+
+\section{Limitations}
+Our current artifact has several known constraints:
+\begin{itemize}[leftmargin=1.5em]
+  \item It is a microbenchmark suite, not a full LLM serving stack.
+  \item Quality and acceptance-rate effects from real token distributions are out of scope.
+  \item Nsight Compute occupancy counters may require elevated permissions on some systems.
+  \item FP4 tensor-core path remains guarded/stubbed for architecture-toolkit combinations still under integration.
+\end{itemize}
+
+\section{Future Work}
+Immediate next steps include:
+\begin{enumerate}[leftmargin=1.5em]
+  \item integrating richer rollback semantics for stochastic verification paths;
+  \item extending mixed-precision kernels toward architecture-native FP8/FP4 tensor-core execution;
+  \item adding system-level harnesses for end-to-end comparisons against production inference engines;
+  \item formalizing ablation studies over launch bounds, role partition ratios, and tile sizes.
+\end{enumerate}
+
+\section*{Reproducibility}
+Scripts, benchmark commands, and figure workflows are versioned in \texttt{scripts/}, \texttt{docs/}, and \texttt{results/}. The paper intentionally references concrete command lines so every reported number can be regenerated from the repository.
 
 \end{document}

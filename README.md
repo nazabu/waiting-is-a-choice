@@ -15,6 +15,40 @@ The GPU code maps two conceptual warp groups onto the same streaming multiproces
 | **Messenger / Draft** | Speculative low-precision arithmetic and staging into shared/cluster-visible buffers | Registers + shared memory for ephemeral tiles; occupies lower warp IDs inside `k_fused_pipeline`. |
 | **Validator / Target** | Verifies speculative states (higher-precision or redundant math) consuming the staged payloads | Occupies upper warp IDs; guarded by `_syncthreads()` / cooperative cluster scopes. |
 
+```mermaid
+flowchart LR
+  hostDriver[HostBenchDriver]
+  serialPath[SerialTwoPhasePath]
+  twoKernelPath[TwoKernelHostSyncPath]
+  fusedPath[FusedSingleKernelPath]
+
+  subgraph fusedKernel [Fused Kernel Roles]
+    draftWarps[DraftWarps]
+    sharedLane[SharedMemoryLane]
+    verifyWarps[VerifyWarps]
+  end
+
+  subgraph clusterPath [Cluster And TMA Path]
+    messengerRank[MessengerRank0]
+    consumerRank[ValidatorRank1]
+    producerSeq[ProducerSeq]
+    consumerSeq[ConsumerSeq]
+  end
+
+  hostDriver --> serialPath
+  hostDriver --> twoKernelPath
+  hostDriver --> fusedPath
+
+  fusedPath --> draftWarps
+  draftWarps --> sharedLane
+  sharedLane --> verifyWarps
+
+  hostDriver --> messengerRank
+  messengerRank --> producerSeq
+  consumerRank --> consumerSeq
+  consumerSeq --> messengerRank
+```
+
 Concrete implementations in-tree:
 
 1. **`k_fused_pipeline` (`cuda/baselines.cu`)** splits the resident warps roughly in half (`is_draft_side`) and uses **static shared memory** (`__shared__ float sm[2048]`) as the lane between draft and verify phases. This models the *zero-external-launch* path that proves “waiting” is orchestration—not an SM limitation.
