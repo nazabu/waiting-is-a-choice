@@ -22,6 +22,12 @@ cudaError_t launch_dsmem_cluster_demo(const float* d_in, float* d_out, int n, in
 cudaError_t launch_tma_style_prefetch_demo(const float* d_kv, float* d_out, std::size_t total_elems,
                                            std::size_t tile_elems, int batches, cudaDeviceProp& prop);
 
+cudaError_t launch_cluster_tma_dsmem_kv_demo(const float* d_kv, float* d_tile_out, std::size_t tile_elems,
+                                             int num_tiles, cudaDeviceProp& prop);
+
+cudaError_t compare_cluster_tma_kv_to_cpu_ref(const float* d_kv, const float* d_partial, int tile_elems,
+                                              int num_tiles, float* max_abs_host);
+
 void run_precision_matmul_fp16(const half* d_A, const half* d_B, float* d_C, int M, int N, int K);
 
 void run_precision_matvec_fp8_e4m3_lut(const std::uint8_t* d_x, const std::uint8_t* d_W, float* d_y,
