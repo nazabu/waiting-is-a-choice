@@ -1,0 +1,4 @@
+name,mean_us,stddev_us,throughput_gops,gpu,cuda_runtime
+"serial_two_phase_stream",7.62236666667,0.746629506208,0,"NVIDIA GeForce RTX 5070 Ti","13.0"
+"two_kernels_sync",16.1743666667,2.02403547882,0,"NVIDIA GeForce RTX 5070 Ti","13.0"
+"fused_pipeline",33.1821,68.6821126165,0,"NVIDIA GeForce RTX 5070 Ti","13.0"
