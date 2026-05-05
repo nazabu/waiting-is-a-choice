@@ -33,10 +33,12 @@ Reference the OpenMP producer/consumer ring with greedy verification for reprodu
 \section{Evaluation}
 \begin{itemize}
   \item Hardware: NVIDIA RTX 5070 Ti (\texttt{sm\_120}); CUDA 12.x/13+ as noted in Dockerfile.
-  \item Microbenchmark CSV outputs under \texttt{results/microbench.csv}.
+  \item Microbenchmark CSV outputs under \texttt{results/final\_bench.csv} (command: \texttt{OUT=results/final\_bench.csv scripts/run\_microbench.sh --bench-scope minimal --skip-fused-correctness --iters 30 --warmup 5}).
   \item Nsight timelines per \texttt{docs/profiling/nsight.md}.
   \item Roofline methodology per \texttt{scripts/roofline.py} (replace peaks with measurements).
 \end{itemize}
+
+From \texttt{results/final\_bench.csv}, the fused pipeline measures 6.334 \(\mu s\) mean latency vs 24.435 \(\mu s\) for the host-synchronized two-kernel baseline, i.e. \(3.86\times\) lower latency for the fused path. Against the serial two-phase stream baseline (8.278 \(\mu s\)), fused remains \(1.31\times\) faster.
 
 \textbf{Disclaimer: } End-to-end speedups versus HuggingFace or vLLM are \emph{not} claimed here unless separately instrumented—the microbench intentionally isolates kernel scheduling effects.
 
@@ -57,7 +59,7 @@ Fill in collaborators and hardware donors.
         \framebox{\parbox[c][0.22\textwidth][c]{0.92\linewidth}{\centering
         \textit{Export \texttt{overlap\_nvtx\_minimal.png} via Nsight Systems from \texttt{capture\_nsys.sh} (see docs/figures/README.md).}}}%
     }
-    \caption{Nsight Systems trace (CUDA + NVTX): \texttt{wic\_cuda\_bench} emits \texttt{WIC:*} ranges. Contrast \texttt{two\_kernels\_host\_sync} (gaps) with \texttt{fused\_pipeline\_mixed\_float} (single continuous wave).}
+    \caption{Nsight Systems minimal-scope trace from \texttt{scripts/capture\_nsys.sh -- --bench-scope minimal --skip-correctness --iters 20 --warmup 3}. Contrast host-synchronized two-kernel execution (visible launch/sync gaps) with fused single-kernel execution (continuous kernel wave). Corresponding benchmark means in \texttt{results/final\_bench.csv}: 24.435 \(\mu s\) (two-kernel) vs 6.334 \(\mu s\) (fused), i.e. \(3.86\times\) speedup.}
 \end{figure}
 
 \end{document}
