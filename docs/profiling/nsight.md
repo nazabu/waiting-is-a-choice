@@ -15,10 +15,19 @@ scripts/capture_nsys.sh
 # inspect docs/figures/nsys_wic_demo.nsys-rep in Nsight Systems GUI
 ```
 
-For a narrower API slice:
+`wic_cuda_bench` pushes **NVTX** ranges (`WIC:serial_two_phase_stream`, `WIC:two_kernels_host_sync`, `WIC:fused_pipeline_mixed_float`, `WIC:kv_tile_pipeline_prefetch`, `WIC:cluster_tma_dsmem_*`, `WIC:fp16_wmma_gemm_64`, etc.) when built with `libnvToolsExt` (optional CMake discover). Use the NVTX row in the timeline to show **Draft/Verify analog** spacing: compare `two_kernels_host_sync` (gaps between kernels) vs `fused_pipeline_mixed_float` (single continuous kernel).
+
+For short traces (recommended for screenshot prep):
 
 ```bash
-nsys profile --trace cuda,nvtx -o results/nsys_mini ./build/wic_cuda_bench --skip-correctness
+./build/wic_cuda_bench --bench-scope minimal --skip-correctness --iters 10 --warmup 2
+scripts/capture_nsys.sh -- --bench-scope minimal --skip-correctness --iters 10 --warmup 2
+```
+
+For a narrower manual slice:
+
+```bash
+nsys profile --trace cuda,nvtx -o results/nsys_mini ./build/wic_cuda_bench --skip-correctness --bench-scope minimal
 ```
 
 Interpretation cues:
@@ -49,3 +58,11 @@ For **`k_cluster_tma_dsmem_kv`** (hardware TMA + cluster shared), use Nsight Com
 - Capture: `ncu --set full -k regex:k_cluster_tma_dsmem -o results/cluster_tma.ncu-rep ./build/wic_cuda_bench --skip-correctness --iters 8`
 
 Refine the metric set after the first on-device capture; figures stay user-generated.
+
+## Occupancy / register worksheet
+
+See [`occupancy.md`](occupancy.md) for the kernel table template and `__launch_bounds__` tuning notes.
+
+## Measured roofline
+
+After exporting `ncu` peaks, combine with `results/microbench.csv` via [`scripts/roofline_measured.py`](../../scripts/roofline_measured.py) (requires `--peak-tflops` and `--peak-mem-gbps` from your capture).
