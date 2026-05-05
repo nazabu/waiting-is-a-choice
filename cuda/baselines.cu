@@ -1,5 +1,6 @@
+#include <cmath>
 #include <cstdio>
-#include <cstring>
+#include <vector>
 
 #include <cuda_runtime.h>
 
@@ -28,14 +29,12 @@ __launch_bounds__(256, 2) __global__ void k_fused_pipeline(const float* __restri
     const bool is_draft_side = (wid < (warps >> 1));
 
     for (int it = 0; it < iters; ++it) {
-        // Phase draft: first half warps load/transform into sm
         if (is_draft_side) {
             for (int idx = tid; idx < n && idx < 2048; idx += blockDim.x) {
                 sm[idx] = tanhf(gx[idx] * 0.25f);
             }
         }
         __syncthreads();
-        // Phase verify: second half warps consume
         if (!is_draft_side) {
             for (int idx = tid; idx < n && idx < 2048; idx += blockDim.x) {
                 const float v = sm[idx];
@@ -69,6 +68,29 @@ void run_single_kernel_fused(const float* d_x, float* d_y, int n, int iters) {
     const int blocks = 1;
     k_fused_pipeline<<<blocks, threads>>>(d_x, d_y, n, iters);
     WIC_CUDA_OK(cudaGetLastError());
+}
+
+float max_abs_diff_fused_vs_two_kernel(const float* d_x, float* d_tmp, float* d_y, int n) {
+    run_two_kernels_with_sync(d_x, d_tmp, d_y, n);
+
+    float* d_fused = nullptr;
+    WIC_CUDA_OK(cudaMalloc(&d_fused, static_cast<std::size_t>(n) * sizeof(float)));
+
+    run_single_kernel_fused(d_x, d_fused, n, 1);
+
+    std::vector<float> href(static_cast<std::size_t>(n));
+    std::vector<float> hf(static_cast<std::size_t>(n));
+    WIC_CUDA_OK(
+        cudaMemcpy(href.data(), d_y, static_cast<std::size_t>(n) * sizeof(float), cudaMemcpyDeviceToHost));
+    WIC_CUDA_OK(cudaMemcpy(hf.data(), d_fused, static_cast<std::size_t>(n) * sizeof(float),
+                           cudaMemcpyDeviceToHost));
+
+    float m = 0.f;
+    for (int i = 0; i < n; ++i) {
+        m = fmaxf(m, fabsf(href[static_cast<std::size_t>(i)] - hf[static_cast<std::size_t>(i)]));
+    }
+    WIC_CUDA_OK(cudaFree(d_fused));
+    return m;
 }
 
 }  // namespace wic

@@ -35,7 +35,7 @@ set_property(TARGET wic_cuda_kernels PROPERTY POSITION_INDEPENDENT_CODE ON)
 target_compile_options(wic_cuda_kernels PRIVATE
   $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr --expt-extended-lambda -lineinfo>)
 
-add_executable(wic_cuda_bench cuda/main_cuda_bench.cpp)
+add_executable(wic_cuda_bench cuda/main_cuda_bench.cpp common/results.cpp)
 target_link_libraries(wic_cuda_bench PRIVATE wic_cuda_kernels CUDA::cudart)
 target_include_directories(wic_cuda_bench PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
 set_property(TARGET wic_cuda_bench PROPERTY CUDA_SEPARABLE_COMPILATION ON)

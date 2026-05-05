@@ -1,0 +1,58 @@
+% ArXiv-ready skeleton for "Waiting is a Choice: Asynchronous Speculative Decoding via Heterogeneous Specialization"
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{hyperref}
+\usepackage{graphicx}
+\usepackage{amsmath}
+\usepackage{booktabs}
+
+\title{Waiting is a Choice: Asynchronous Speculative Decoding via Heterogeneous Specialization}
+\author{Anonymous Author(s)}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Traditional speculative decoding often incurs unavoidable-looking latency from alternating draft and target executions separated by synchronization. We argue this delay is partly an orchestration artifact. We prototype a heterogeneous, warp-specialized execution model on NVIDIA Blackwell-class hardware that keeps draft messenger warps advancing while validator warps overlap verification and KV-style memory traffic inside a tightly coupled CUDA kernel. Claims are anchored to reproducible GPU microbenchmarks (not production LLM throughput) and juxtaposed honestly against CPU-orchestrated baselines analogous to prevalent frameworks such as HuggingFace \texttt{generate()} pipelines and staged GPU engines like vLLM.
+\end{abstract}
+
+\section{Problem}
+Explain the synchronous draft$\rightarrow$verify$\rightarrow$resample rhythm in speculative decoding deployments and quantify the stalls introduced by sequential kernel launches and host barriers.
+
+\section{Method}
+\subsection{Warp partitioning}
+Discuss SM resource budgets: warps reserved for messenger (draft/low precision) lanes vs validator/target lanes; shared-memory lanes emulating DSMEM handshakes within a cooperative cluster (\texttt{k\_cluster\_messenger\_validator}).
+
+\subsection{Memory prefetch}
+Describe the KV-tile prefetch warps and how they mirror TMA-style bulk movement on production Blackwell stacks.
+
+\subsection{CPU analogue}
+Reference the OpenMP producer/consumer ring with greedy verification for reproducible correctness before GPU bring-up.
+
+\section{Evaluation}
+\begin{itemize}
+  \item Hardware: NVIDIA RTX 5070 Ti (\texttt{sm\_120}); CUDA 12.x/13+ as noted in Dockerfile.
+  \item Microbenchmark CSV outputs under \texttt{results/microbench.csv}.
+  \item Nsight timelines per \texttt{docs/profiling/nsight.md}.
+  \item Roofline methodology per \texttt{scripts/roofline.py} (replace peaks with measurements).
+\end{itemize}
+
+\textbf{Disclaimer: } End-to-end speedups versus HuggingFace or vLLM are \emph{not} claimed here unless separately instrumented—the microbench intentionally isolates kernel scheduling effects.
+
+\section{Limitations \& Future Work}
+Discuss cascaded speculation: multiple drafting models cooperating through extended DSMEM epochs, additional prefetch engines, and register pressure trade-offs.
+
+\section*{Acknowledgments}
+Fill in collaborators and hardware donors.
+
+\bibliographystyle{plain}
+\bibliography{refs} % populate refs.bib externally
+
+\begin{figure}[t]
+    \centering
+    % \includegraphics[width=\linewidth]{../docs/figures/overlap_placeholder.png}
+    \caption{(Placeholder) Nsight Systems capture showing prefetch + compute concurrency.}
+\end{figure}
+
+\end{document}

@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
@@ -92,7 +93,8 @@ std::vector<int> pipeline_openmp_specialized(const CpuPipelineConfig& cfg) {
 
     omp_set_dynamic(0);
     omp_set_max_active_levels(32);
-#pragma omp parallel num_threads(2) default(shared)
+    const int team = std::max(2, cfg.draft_threads + cfg.verify_threads);
+#pragma omp parallel num_threads(team) default(shared)
 #pragma omp sections
     {
 #pragma omp section
