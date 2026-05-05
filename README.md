@@ -20,7 +20,7 @@ Concrete implementations in-tree:
 1. **`k_fused_pipeline` (`cuda/baselines.cu`)** splits the resident warps roughly in half (`is_draft_side`) and uses **static shared memory** (`__shared__ float sm[2048]`) as the lane between draft and verify phases. This models the *zero-external-launch* path that proves “waiting” is orchestration—not an SM limitation.
 2. **`k_cluster_messenger_validator` (`cuda/dsmem_pipeline.cu`)** launches **two clustered thread blocks**, each exposing dynamic shared scratch. Explicit `cuda::launch::cluster_dims` synchronization (`cluster.sync()`) substitutes for distributed-shared-memory choreography when cross-block DSMEM primitives are gated by toolchain maturity. Messenger block 0 writes the global handshake buffer; validator block 1 consumes it—the same causal structure as DSMEM payloads.
 3. **`k_kv_tile_pipeline` (`cuda/tma_prefetch.cu`)** reserves **warp groups** for prefetch and compute iterations over KV-shaped tiles (`tile_a`/`tile_b` double buffer). Prefetch lanes issue wide global reads; compute lanes perform dependent math concurrently on the trailing tile—a stand-in pattern for documenting **Nsight-visible memory/compute overlap** until CUTLASS-style TMA descriptors land in-repo.
-4. **`k_cluster_tma_dsmem_kv` (`cuda/cluster_tma_dsmem.cu`)** is the **TMA + DSMEM slice** for Hopper+ (`sm_90` and newer): a **2×1×1 thread-block cluster** where rank **0** builds a **rank-3 `CUtensorMap`** over **flattened** KV (`globalDim = [tile_elems·num_tiles, 1, 1]`, **`[tile_elems,1,1]`** box, coordinates **`(t·tile_elems, 0, 0)`**), issues **`cp.async.bulk.tensor` into the messenger’s `shared::cta` tile buffer**, and pairs it with **`mbarrier.arrive.expect_tx` (release, CTA-scoped)** plus **`mbarrier_try_wait_parity`** for completion; rank **1** reads the tile through **`cluster.map_shared_rank`**, reduces **∑(x² + sin x)** across the block, and atomically stores per-tile partials. Dynamic SMEM is **128-byte–aligned**; **swizzle OFF**. Rank **0** updates a **volatile producer counter** after each tile (DSMEM-visible at the same byte offset as the tile). **Pre-cluster** hardware keeps `dsmem_pipeline.cu` / `tma_prefetch.cu`; `launch_cluster_tma_dsmem_kv_demo` returns **`cudaErrorNotSupported`** when `prop.major < 9` or `cuTensorMapEncodeTiled` fails. Require **`tile_elems · sizeof(float) ≡ 0 (mod 16)`** (tensor stride alignment).
+4. **`k_cluster_tma_dsmem_kv` (`cuda/cluster_tma_dsmem.cu`)** is the **TMA + DSMEM slice** for Hopper+ (`sm_90` and newer): a **2×1×1 thread-block cluster** where rank **0** builds a **rank-3 `CUtensorMap`** over **flattened** KV (`globalDim = [tile_elems·num_tiles, 1, 1]`, **`[tile_elems,1,1]`** box, coordinates **`(t·tile_elems, 0, 0)`**), issues **`cp.async.bulk.tensor` into the messenger’s `shared::cta` tile buffer**, and pairs it with **`mbarrier.arrive.expect_tx` (release, CTA-scoped)** plus **`mbarrier_try_wait_parity`** for completion; rank **1** reads the tile through **`cluster.map_shared_rank`**, reduces **∑(x² + sin x)** across the block, and atomically stores per-tile partials. **Anti-lapping:** rank **0** spins on a mapped **`consumer_seq`** (device `atomicAdd` from rank **1** on the messenger SMEM word) before issuing tile **t>0**; rank **0** still publishes a **producer** tile id after each TMA + fence. Dynamic SMEM is **128-byte–aligned**; **swizzle OFF**. **Pre-cluster** hardware keeps `dsmem_pipeline.cu` / `tma_prefetch.cu`; `launch_cluster_tma_dsmem_kv_demo` returns **`cudaErrorNotSupported`** when `prop.major < 9` or `cuTensorMapEncodeTiled` fails. Require **`tile_elems · sizeof(float) ≡ 0 (mod 16)`** (tensor stride alignment).
 
 Occupancy takeaway: heterogeneous kernels pay in **register pressure** (`__launch_bounds__` hints annotate hot paths). When draft + validators share residency, spilled registers bounce through local DRAM and erase wins—benchmark with Nsight Compute (see [`docs/profiling/nsight.md`](docs/profiling/nsight.md)).
 
@@ -48,7 +48,18 @@ scripts/build.sh
 ./build/wic_cpu_demo --bind --threads 4
 GIT_COMMIT="$(git rev-parse HEAD)" scripts/run_microbench.sh
 scripts/roofline.py --csv results/microbench.csv
+python3 scripts/roofline_measured.py --bench-csv results/microbench.csv --peak-tflops 80 --peak-mem-gbps 850
 ```
+
+Additional `wic_cuda_bench` flags (publication workflow):
+
+| Flag | Purpose |
+| --- | --- |
+| `--bench-scope <full\|core\|minimal>` | `minimal` = serial/two-kernel/fused only (fast Nsight traces). `core` = add KV + cluster TMA; `full` = default + Tensor Core FP16/BF16 + FP8/FP4/cluster demos. |
+| `--stochastic-verify-iters N` | Host-driven draft corruption (~20% Bernoulli vs reference); device flags mismatches; asserts 100% detection. |
+| `--skip-fused-correctness` | Skips fused-vs-two-kernel check only. |
+
+NVTX ranges (`WIC:*`) appear in Nsight Systems when `libnvToolsExt` is linked at configure time.
 
 Environment notes:
 
@@ -78,7 +89,9 @@ Full framework stacks multiplex CPU scheduling, graph capture, quantization, KV 
 
 ## Roofline methodology
 
-[`scripts/roofline.py`](scripts/roofline.py) prints a naive arithmetic intensity scaffold. Replace `--mem-gbps` and `--peak-fp16-tflops` with **measured** peaks from NVIDIA product briefings plus `memcpy`/Nsight-derived bandwidth after you characterize your exact board SKU.
+[`scripts/roofline.py`](scripts/roofline.py) prints a scaffold using CSV row `fp16_matmul_wmma_64` by default.
+
+For claims tied to **measured** hardware ceilings, capture peaks with `ncu`/`memcpy` sweeps then run [`scripts/roofline_measured.py`](scripts/roofline_measured.py) (`--peak-tflops`, `--peak-mem-gbps`). Register/occupancy capture workflow: [`docs/profiling/occupancy.md`](docs/profiling/occupancy.md).
 
 ---
 
