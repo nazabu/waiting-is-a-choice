@@ -187,4 +187,4 @@ The image pins **CUDA 12.8.0-devel** (`nvidia/cuda:12.8.0-devel-ubuntu24.04`). M
 
 ## License
 
-Specify your preferred OSS license externally (artifact omitted here).
+MIT License
