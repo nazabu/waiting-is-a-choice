@@ -8,6 +8,10 @@
   scripts/capture_nsys.sh -- --bench-scope minimal --skip-correctness --iters 20 --warmup 3
   ```
 3. Open `docs/figures/nsys_wic_demo.nsys-rep` in Nsight Systems.
+   > **Note:** `.nsys-rep` binaries are local-only (gitignored; typical size 50–300 MB). Only
+   > the exported PNG (`overlap_nvtx_minimal.png`) is committed. To reproduce the timeline,
+   > rerun `scripts/capture_nsys.sh` on the target machine and re-export the PNG following
+   > the crop checklist below.
 4. Export PNG: select **CUDA HW** + **NVTX** tracks; zoom to `WIC:fused_pipeline_mixed_float` vs `WIC:two_kernels_host_sync`.
 5. Save as `docs/figures/overlap_nvtx_minimal.png` and reference the exact command line in the figure caption.
 

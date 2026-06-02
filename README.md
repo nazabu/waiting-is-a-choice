@@ -96,9 +96,10 @@ cpu/                 # Greedy LM-head reference + OpenMP producer/consumer ring
 cuda/                # Benchmark kernels + NVIDIA bench driver (`wic_cuda_bench`)
 scripts/             # Build/env/microbench/nsys/roofline helpers
 docs/profiling/      # Exact Nsight command recipes
-paper/               # LaTeX skeleton for the manuscript
+paper/               # Full LaTeX manuscript (main.tex + references.bib)
 results/             # CSV outputs (.gitignored large traces remain ignored)
 Dockerfile           # CUDA 12.8+ reproducible toolchain
+LICENSE              # MIT License
 ```
 
 ---
@@ -109,6 +110,12 @@ Dockerfile           # CUDA 12.8+ reproducible toolchain
 scripts/build.sh
 ./build/wic_cpu_demo --bind --threads 4
 scripts/run_microbench.sh
+```
+
+For roofline analysis, the `--bench-scope full` run produces `fp16_matmul_wmma_64` rows needed by the roofline scripts. The committed headline artifact (`results/final_bench.csv`) uses `minimal` scope and does not contain those rows. Run a full-scope sweep first:
+
+```bash
+OUT=results/microbench.csv scripts/run_microbench.sh --bench-scope full --skip-correctness --iters 30 --warmup 5
 scripts/roofline.py --csv results/microbench.csv
 python3 scripts/roofline_measured.py --bench-csv results/microbench.csv --peak-tflops 80 --peak-mem-gbps 850
 ```
@@ -187,4 +194,4 @@ The image pins **CUDA 12.8.0-devel** (`nvidia/cuda:12.8.0-devel-ubuntu24.04`). M
 
 ## License
 
-MIT License
+This project is released under the [MIT License](LICENSE).

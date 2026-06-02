@@ -13,14 +13,19 @@ Record **registers / thread** and **spills** for each hot `__global__`.
 
 ## Nsight Compute table (fill after capture)
 
+> **Status (2026-06-02):** Columns marked `—` are pending a dedicated headless `ncu --set full`
+> session with sufficient counter permissions. Desktop GPU processes (display, compositor) were
+> present during headline latency capture and may restrict hardware counter access. Run on a
+> headless or exclusive-compute-mode machine and populate this table before strengthening
+> occupancy claims. See `docs/bench_quality_gate.md` §D for the capture command.
 
 | Kernel                   | Block | `__launch_bounds__` | Reg/thread (ncu) | Theoretical max blocks/SM | Achieved active warps | Notes                    |
 | ------------------------ | ----- | ------------------- | ---------------- | ------------------------- | --------------------- | ------------------------ |
-| `k_fused_pipeline`       | 256   | `(256, 2)`          |                  |                           |                       | draft vs verify halves   |
-| `k_kv_tile_pipeline`     | 256   | `(256, 2)`          |                  |                           |                       | prefetch + compute warps |
-| `k_cluster_tma_dsmem_kv` | 128   | `(128, 2)`          |                  |                           |                       | cluster 2×1×1            |
-| `k_gemm_fp16_wmma_64_nn` | 512   | `(512, 2)`          |                  |                           |                       | 16 WMMA tiles            |
-| `k_gemm_bf16_wmma_64_nn` | 512   | `(512, 2)`          |                  |                           |                       | BF16 WMMA                |
+| `k_fused_pipeline`       | 256   | `(256, 2)`          | —                | —                         | —                     | draft vs verify halves   |
+| `k_kv_tile_pipeline`     | 256   | `(256, 2)`          | —                | —                         | —                     | prefetch + compute warps |
+| `k_cluster_tma_dsmem_kv` | 128   | `(128, 2)`          | —                | —                         | —                     | cluster 2×1×1            |
+| `k_gemm_fp16_wmma_64_nn` | 512   | `(512, 2)`          | —                | —                         | —                     | 16 WMMA tiles            |
+| `k_gemm_bf16_wmma_64_nn` | 512   | `(512, 2)`          | —                | —                         | —                     | BF16 WMMA                |
 
 
 Example `ncu` query (adjust metrics to toolkit):

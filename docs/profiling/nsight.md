@@ -77,3 +77,20 @@ See [occupancy.md](occupancy.md) for the kernel table template and `__launch_bou
 ## Measured roofline
 
 After exporting `ncu` peaks, combine with `results/microbench.csv` via [scripts/roofline_measured.py](../../scripts/roofline_measured.py) (requires `--peak-tflops` and `--peak-mem-gbps` from your capture).
+
+> **Note:** `results/microbench.csv` is not committed because the headline artifact uses
+> `--bench-scope minimal`, which does not emit the `fp16_matmul_wmma_64` row that roofline
+> scripts expect. Generate it with:
+> ```bash
+> OUT=results/microbench.csv scripts/run_microbench.sh \
+>   --bench-scope full --skip-correctness --iters 30 --warmup 5
+> ```
+
+## Fused kernel NCU profile
+
+`results/profile_kfused.png` is a committed Nsight Compute screenshot for `k_fused_pipeline`
+showing the warp-state timeline and memory access breakdown. It is a supplementary diagnostic
+artifact; it is not directly cited in the paper but supports the register-pressure discussion
+in §Resource Status. To regenerate: capture `results/fused.ncu-rep` with `ncu --set full`,
+open in the Nsight Compute GUI, navigate to the **Source** or **Memory Workload** section, and
+export the chart as PNG.
