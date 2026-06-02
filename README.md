@@ -30,8 +30,8 @@ Everything else — serial two-phase stream, two-kernel host-sync, fused single-
 
 ## What We Have Shown So Far
 
-- The fused single-kernel path reduces orchestration overhead versus host-synchronized two-kernel execution in this microbenchmark setup.
-- Current 10-trial aggregate headline (`results/final_bench.csv`): fused latency is lower than two-kernel host-sync, but not lower than the serial two-phase stream baseline.
+- The fused single-kernel path reduces orchestration overhead versus host-synchronized two-kernel execution in this microbenchmark setup (**1.56× median speedup** over two-kernel host-sync across 10 trials at n=256).
+- Current 10-trial aggregate headline (`results/final_bench.csv`): fused latency is lower than two-kernel host-sync, but not lower than the serial two-phase stream baseline (0.83× serial/fused).
 - Nsight timelines show where host-synchronization stretches the execution window compared with fused scheduling.
 - These are kernel-level scheduling results, not end-to-end LLM serving claims.
 
