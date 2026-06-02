@@ -1,8 +1,32 @@
 # Waiting is a Choice
 
-Microbenchmarks for **asynchronous heterogeneous speculative decoding** on NVIDIA Blackwell-class GPUs (default `sm_120`, e.g., RTX 5070 Ti family). Everything in this repo lives under `waiting-is-a-choice/`; do not sprinkle artifacts into the parent `research/` tree.
+Microbenchmarks for **asynchronous heterogeneous speculative decoding**. This is **not** an integrated vLLM/Triton stack. It isolates warp-specialization, cluster barriers, prefetch/compute overlap, and precision stubs so manuscript claims remain tied to reproducible kernels and CSV timelines.
 
-This is **not** an integrated vLLM/Triton stack. It isolates warp-specialization, cluster barriers, prefetch/compute overlap, and precision stubs so manuscript claims remain tied to reproducible kernels and CSV timelines.
+## GPU Compatibility
+
+The build defaults to `sm_120` (RTX 5070 Ti / Blackwell). **The core benchmark runs on any CUDA GPU sm_70 or newer.** Override the architecture at build time:
+
+| GPU | `WIC_CUDA_ARCH` | Notes |
+|---|---|---|
+| A5000 / A4000 / A6000 (Ampere) | `86` | All core paths run; cluster/TMA paths skipped |
+| A100 (Ampere) | `80` | Same as above |
+| RTX 3000 series (Ampere) | `86` | Same as above |
+| RTX 4000 series (Ada) | `89` | FP8 hardware path also active |
+| H100 / H800 (Hopper) | `90` | Cluster + TMA paths also active |
+| RTX 5000 series (Blackwell) | `120` | Default; all paths active |
+
+Build for an A5000:
+
+```bash
+WIC_CUDA_ARCH=86 scripts/build.sh
+```
+
+**Paths silently skipped on pre-Hopper GPUs** (the benchmark prints "skipped" and continues — this is expected):
+- `cluster_tma_dsmem_kv` — requires sm_90+ (Hopper+)
+- `cluster_dsmem_demo` — requires sm_90+ (Hopper+)
+- FP4 path — stub only on all hardware (not yet implemented)
+
+Everything else — serial two-phase stream, two-kernel host-sync, fused single-kernel, KV tile prefetch, FP16/BF16 WMMA GEMMs — runs on Ampere and newer.
 
 ## What We Have Shown So Far
 
@@ -107,7 +131,25 @@ LICENSE              # MIT License
 ## Build & run
 
 ```bash
+# Blackwell (default — RTX 5070 Ti, etc.)
 scripts/build.sh
+
+# Ampere — A5000, A4000, A6000, RTX 3000 series
+WIC_CUDA_ARCH=86 scripts/build.sh
+
+# Ampere — A100
+WIC_CUDA_ARCH=80 scripts/build.sh
+
+# Ada — RTX 4000 series
+WIC_CUDA_ARCH=89 scripts/build.sh
+
+# Hopper — H100/H800
+WIC_CUDA_ARCH=90 scripts/build.sh
+```
+
+After building, run the CPU demo and minimal benchmark:
+
+```bash
 ./build/wic_cpu_demo --bind --threads 4
 scripts/run_microbench.sh
 ```
